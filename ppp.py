@@ -111,3 +111,4 @@ def calculate_achievement(node):
 # 達成度の計算
 overall_achievement = calculate_achievement(root_node)
 print("全体の達成度:", overall_achievement,excel_file)
+print_tree(root_node)
