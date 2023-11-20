@@ -7,9 +7,10 @@ import dash_cytoscape as cyto
 import pandas as pd
 import sqlite3
 import plotly.graph_objs as go
-import ppp
+import node_calculation
 import re
 from openpyxl import Workbook, load_workbook
+from node_calculation import TreeNode
 
 app = dash.Dash(external_stylesheets=[dbc.themes.FLATLY])
 
@@ -87,7 +88,7 @@ def dropdown_sub(category_num,SQuaRE_name):
         x=x+1
     return options
 
-#重要度変換
+#重要度＆貢献度変換
 def chenge(x):
     if x == 'H':
         return int(3)
@@ -125,8 +126,8 @@ def make_data(category_num,SQuaRE_name,new):
                         name_in +=[num[2]]
                         y+=[i]
                         #print(y)
-                        root_node = ppp.create_tree_from_excel(new_file, e_seet4, e_seet5, num[2])
-                        z += [ppp.calculate_achievement(root_node)]
+                        root_node = node_calculation.make_tree(new_file, e_seet4, e_seet5, num[2])
+                        z += [node_calculation.calculate_achievement(root_node)]
     for i in range(5):
         total_sum = total_sum+chenge(y[i]) 
         #print(total_sum)
@@ -163,13 +164,13 @@ def insert_line_breaks(text):
         parts.insert(2 * i + 1, html.Br())
     return parts
 
-#カテゴリの重要度のプルダウンデータ
+#貢献度のプルダウンデータ
 def select_data(x):
     data = [
-        {'label': '重要度：高', 'value': 'H'},
-        {'label': '重要度：中', 'value': 'M'},
-        {'label': '重要度：低', 'value': 'L'}, 
-        {'label': '重要度：不要', 'value': 'N'}
+        {'label': '貢献度：高', 'value': 'H'},
+        {'label': '貢献度：中', 'value': 'M'},
+        {'label': '貢献度：低', 'value': 'L'}, 
+        {'label': '貢献度：不要', 'value': 'N'}
         ]
     return data
 
@@ -266,13 +267,19 @@ content = html.Div(
                 dbc.Col(
                     [
                         dbc.Label('<品質状態モデル>'),
+                        dbc.Row(id='model'),
+                        dbc.Label('__表示__(貢献度 名称)'),
+                        html.Br(),
+                        dbc.Label('ミドリ：品質の実現'),
+                        html.Br(),
+                        dbc.Label('オレンジ：品質の活動'),
                     ],
                     id='right_model',
-                    width=3,
+                    width=4,
                 ),
                 dbc.Col(
                     id='right_free',
-                    width=9,
+                    width=8,
                 )
             ],
             ),
@@ -595,7 +602,7 @@ def up_data_tub(request,sub_SQueRE,name):
                                         dbc.Col(
                                             [
                                                 dbc.Label(
-                                                    '<重要度入力>',
+                                                    '<貢献度入力>',
                                                     style={'fontSize': 15, 'fontWeight': 'bold'},
                                                     ),      
                                                 ],
@@ -608,7 +615,7 @@ def up_data_tub(request,sub_SQueRE,name):
                                                 dcc.Dropdown(
                                                     options=select_data(1),
                                                     id={'type': 'dropdown','index': row[3]},
-                                                    placeholder='重要度...',
+                                                    placeholder='貢献度...',
                                                     value=row[8],
                                                     ),  
                                                 ],
@@ -778,7 +785,7 @@ def up_data_tub(request,sub_SQueRE,name):
                                         dbc.Col(
                                             [
                                                 dbc.Label(
-                                                    '<重要度入力>',
+                                                    '<貢献度入力>',
                                                     style={'fontSize': 15, 'fontWeight': 'bold'},
                                                     ),      
                                                 ],
@@ -791,7 +798,7 @@ def up_data_tub(request,sub_SQueRE,name):
                                                 dcc.Dropdown(
                                                     options=select_data(1),
                                                     id={'type': 'dropdown','index': i[3]},
-                                                    placeholder='重要度...',
+                                                    placeholder='貢献度...',
                                                     value=i[9],
                                                     ),  
                                                 ],
@@ -988,7 +995,7 @@ def up_data_tub(request,sub_SQueRE,name):
                                         dbc.Col(
                                             [
                                                 dbc.Label(
-                                                    '<重要度入力>',
+                                                    '<貢献度入力>',
                                                     style={'fontSize': 15, 'fontWeight': 'bold'},
                                                     ),      
                                                 ],
@@ -1001,7 +1008,7 @@ def up_data_tub(request,sub_SQueRE,name):
                                                 dcc.Dropdown(
                                                     options=select_data(1),
                                                     id={'type': 'dropdown','index': x[3]},
-                                                    placeholder='重要度...',
+                                                    placeholder='貢献度...',
                                                     value=x[9],
                                                     ),  
                                                 ],
@@ -1052,6 +1059,7 @@ def up_data_tub(request,sub_SQueRE,name):
     Output('ar_tabs', 'active_tab'),
     Output('re_tabs', 'active_tab'),
     Output('stacked-bar-chart','figure'),
+    Output('model','children'),
     Input({'type': 'button', 'index': ALL}, 'n_clicks'),
     State({'type': 'dropdown','index': ALL},'value'),
     State({'type': 'dropdown','index': ALL},'id'),
@@ -1065,17 +1073,15 @@ def update_output(n_clicks_list,values,id,values1,name,category_name):
         raise dash.exceptions.PreventUpdate
     ctx = dash.callback_context
     triggered_id = ctx.triggered_id
+    children=[]
     if triggered_id is not None:
         button_id = triggered_id['index']
-        #print(button_id)
         index_values = [item['index'] for item in id]
-        #print(index_values)
-        #print(values)
-        #print(values1)
         df_ar = pd.read_excel(name+'_'+e_base, sheet_name=[e_seet4])
         df_re = pd.read_excel(name+'_'+e_base, sheet_name=[e_seet5])
         for row in df_ar[e_seet4].values:
             if row[3]==button_id:
+                id=row[8]
                 for a,b in zip(index_values,values):
                     if a==button_id:
                         for row in df_ar[e_seet4].values:
@@ -1083,6 +1089,7 @@ def update_output(n_clicks_list,values,id,values1,name,category_name):
                                 write_file_ar(name+'_'+e_base,button_id,b)
         for row in df_re[e_seet5].values:
             if row[3]==button_id:
+                id=row[1]
                 for a,b in zip(index_values,values):
                     if a==button_id:
                         for c,d in zip(index_values,values1):
@@ -1090,9 +1097,9 @@ def update_output(n_clicks_list,values,id,values1,name,category_name):
                                 for row in df_re[e_seet5].values:
                                     if row[3]==button_id:
                                         write_file_re(name+'_'+e_base,button_id,b,d)
-        
+        data=make_data(category_name,'保守性',name)
         figure={
-            'data': make_data(category_name,'保守性',name),
+            'data': data,
             'layout': go.Layout(
                 barmode='stack',  # 積み上げ設定
                 yaxis={'title': '割合（%）'},
@@ -1100,8 +1107,11 @@ def update_output(n_clicks_list,values,id,values1,name,category_name):
                 margin={'l': 35, 'r': 20, 't': 10, 'b': 20}
                 )
             }
+        root_node = node_calculation.make_tree(name+'_'+e_base, e_seet4, e_seet5, id) 
         
-        return '','',figure
+        children=[node_calculation.tree_display(root_node,name)]
+        #print(children)
+        return '','',figure,children
 
 #アーキの書き込み
 def write_file_ar(file_name,target_node,new_data):
